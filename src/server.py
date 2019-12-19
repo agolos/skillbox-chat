@@ -1,5 +1,4 @@
-#  Created by Artem Manchenkov
-#  artyom@manchenkoff.me
+#  Created by Alexandr Golosseyev
 #
 #  Copyright © 2019
 #
@@ -8,6 +7,7 @@
 from twisted.internet import reactor
 from twisted.internet.protocol import ServerFactory, connectionDone
 from twisted.protocols.basic import LineOnlyReceiver
+import datetime
 
 
 class ServerProtocol(LineOnlyReceiver):
@@ -21,9 +21,11 @@ class ServerProtocol(LineOnlyReceiver):
         self.factory.clients.remove(self)
 
     def send_history(self):
+        """Return last 10 chat message."""
         counter = 10
-        for i in range(len(self.factory.history) - 10, len(self.factory.history)):
-            self.sendLine(f"{self.factory.history[i]}".encode())
+        self.factory.history = self.factory.history[-10:]
+        for hist_rec in self.factory.history:
+            self.sendLine(f"{hist_rec}".encode())
             counter -= 1
             if counter == 0:
                 break
@@ -32,11 +34,11 @@ class ServerProtocol(LineOnlyReceiver):
         try:
             content = line.decode()
             if self.login is not None:
-                content = f"Message from {self.login}: {content}"
+                cur_time = datetime.datetime.today()
+                content = f"{cur_time:%Y-%m-%d %H:%M:%S} : Message from {self.login}: {content}"
                 self.factory.history.append(content)
                 for user in self.factory.clients:
-                    if user is not self:
-                        user.sendLine(content.encode())
+                    user.sendLine(content.encode())
             else:
                 # login:admin -> admin
 
@@ -52,12 +54,14 @@ class ServerProtocol(LineOnlyReceiver):
                         self.sendLine("Welcome!".encode())
                         self.send_history()
                     else:
-                        self.sendLine(f"Логин {new_login} занят, попробуйте другой".encode())
+                        self.sendLine(f"Login {new_login} is already exist, try another".encode())
+                        self.transport.loseConnection()
                 else:
-                    self.sendLine("Invalide login!".encode())
-        except:
+                    self.sendLine("Invalid login!".encode())
+        except UnicodeDecodeError:
             print("Decode Error")
-
+        except:
+            print("Unknown issue")
 
 
 class Server(ServerFactory):
@@ -70,7 +74,6 @@ class Server(ServerFactory):
 
     def startFactory(self):
         print("Server started")
-
 
 
 reactor.listenTCP(1234, Server())
